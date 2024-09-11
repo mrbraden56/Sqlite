@@ -13,8 +13,20 @@ var PREPARE_UNRECOGNIZED_STATEMENT = errors.New("Prepare Unrecognized Statement"
 var PREPARE_PARSING_ERROR = errors.New("Prepare Parsing Error")
 var PREPARE_NEGATIVE_ID = errors.New("Error: Cannot insert a negative id")
 var EXECUTE_TABLE_FULL = errors.New("Error: Table Full")
+var PAGER_OPENING_ERROR = errors.New("Error: Opening Pager Failed")
 
 func runCLI(reader io.Reader, writer io.Writer) {
+	filename := os.Args[1]
+	var err error
+	table, err = db_open(filename)
+	if err != nil {
+		switch {
+		case errors.Is(err, PAGER_OPENING_ERROR):
+			fmt.Fprintln(writer, PAGER_OPENING_ERROR)
+
+		}
+	}
+
 	scanner := bufio.NewScanner(reader)
 
 	for {
@@ -33,6 +45,7 @@ func runCLI(reader io.Reader, writer io.Writer) {
 			switch input {
 			case ".exit":
 				fmt.Fprintln(writer, "Exiting...")
+				db_close(table)
 				return
 			case ".help":
 				fmt.Fprintln(writer, "Helping...")

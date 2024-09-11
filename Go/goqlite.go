@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -13,13 +14,15 @@ import (
 
 const TABLE_MAX_PAGES = 100
 const PAGES_MAX_ROWS = 14
+const USERNAME_SIZE = 32
+const EMAIL_SIZE = 32
 
-var table Table
+var table *Table
 
 type Row struct {
-	id       int
-	username string
-	email    string
+	id       uint32
+	username [USERNAME_SIZE]byte
+	email    [EMAIL_SIZE]byte
 }
 
 type Statement struct {
@@ -27,9 +30,15 @@ type Statement struct {
 	row            Row
 }
 
+type Pager struct {
+	pages           [TABLE_MAX_PAGES]*[PAGES_MAX_ROWS]Row
+	file_descriptor *os.File
+	file_length     os.FileInfo
+}
+
 type Table struct {
 	num_rows int
-	pages    [TABLE_MAX_PAGES]*[PAGES_MAX_ROWS]Row
+	pager    *Pager
 }
 
 // NOTE: This is our Sql Compiler
@@ -39,13 +48,6 @@ func prepare_statement(input string, statement *Statement) error {
 	if fields[0] == "select" {
 		//NOTE: Example: select 1 cstack foo@bar.com
 		statement.statement_type = "statement_select"
-		statement.row.id, err = strconv.Atoi(fields[1])
-		if err != nil {
-			fmt.Println("Can't convert this to an int!")
-			return PREPARE_PARSING_ERROR
-		}
-		statement.row.username = fields[2]
-		statement.row.email = fields[3]
 		return nil
 	}
 	if fields[0] == "insert" {
@@ -54,13 +56,19 @@ func prepare_statement(input string, statement *Statement) error {
 		if fields[1] == "-1" {
 			return PREPARE_NEGATIVE_ID
 		}
-		statement.row.id, err = strconv.Atoi(fields[1])
+		var int_id int
+		int_id, err = strconv.Atoi(fields[1])
 		if err != nil {
 			fmt.Println("Can't convert this to an int!")
 			return PREPARE_PARSING_ERROR
 		}
-		statement.row.username = fields[2]
-		statement.row.email = fields[3]
+		statement.row.id = uint32(int_id)
+		if err != nil {
+			fmt.Println("Can't convert this to an int!")
+			return PREPARE_PARSING_ERROR
+		}
+		copy(statement.row.username[:], fields[2])
+		copy(statement.row.email[:], fields[3])
 		return nil
 	}
 
@@ -75,32 +83,27 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 	rowToInsert := statement.row
 	pageIndex := table.num_rows / PAGES_MAX_ROWS
 	rowIndex := table.num_rows % PAGES_MAX_ROWS
-	if table.pages[pageIndex] == nil {
-		table.pages[pageIndex] = new([PAGES_MAX_ROWS]Row)
+	if table.pager.pages[pageIndex] == nil {
+		table.pager.pages[pageIndex] = new([PAGES_MAX_ROWS]Row)
 	}
 	switch statement.statement_type {
 	case "statement_insert":
 		{
 			//NOTE: We manage the array ourselves, instead of using append, because arrays are fixed sized and slices are dynamically sized
 			//Arrays will be much more efficient
-			(*table.pages[pageIndex])[rowIndex] = rowToInsert
+			(*table.pager.pages[pageIndex])[rowIndex] = rowToInsert
 			table.num_rows += 1
 		}
 	case "statement_select":
 		{
-			rowId := statement.row.id
-			var selectedRow Row
-		OuterLoop:
-			for i := 0; i < TABLE_MAX_PAGES; i++ {
-				for j := 0; j < PAGES_MAX_ROWS; j++ {
-					currentRowId := (*table.pages[i])[j].id
-					if rowId == currentRowId {
-						selectedRow = (*table.pages[i])[j]
-						break OuterLoop
-					}
+			for i := 0; i <= pageIndex; i++ {
+				startIndex := i * PAGES_MAX_ROWS
+				endIndex := min((i+1)*PAGES_MAX_ROWS, table.num_rows)
+				for j := startIndex; j < endIndex; j++ {
+					selectedRow := (*table.pager.pages[i])[j%PAGES_MAX_ROWS] // Adjust index for page
+					fmt.Fprintf(writer, "(%d %s %s)\n", selectedRow.id, selectedRow.username, selectedRow.email)
 				}
 			}
-			fmt.Fprintf(writer, "(%d %s %s)\n", selectedRow.id, selectedRow.username, selectedRow.email)
 		}
 	default:
 		{
@@ -110,6 +113,39 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 	return nil
 }
 
-func NewTable() *Table {
-	return &Table{}
+func db_open(filename string) (*Table, error) {
+	pager, err := pager_open(filename)
+	num_rows := pager.file_length
+	fmt.Println(num_rows)
+	if err != nil {
+		return nil, err
+	}
+	table = &Table{
+		num_rows: 0,
+		pager:    pager,
+	}
+	return table, nil
+}
+
+func db_close(table *Table) {
+	table.pager.file_descriptor.Close()
+}
+
+func pager_open(filename string) (*Pager, error) {
+	file, err := os.OpenFile("mydb.db", os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, PAGER_OPENING_ERROR
+	}
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fmt.Println("Error getting file info:", err)
+		return nil, PAGER_OPENING_ERROR
+	}
+	pager := &Pager{
+		pages:           [TABLE_MAX_PAGES]*[PAGES_MAX_ROWS]Row{}, // Initialize array of pointers
+		file_descriptor: file,                                    // Example value
+		file_length:     fileInfo,                                // Example value
+	}
+	return pager, nil
+
 }
