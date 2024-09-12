@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -14,8 +15,11 @@ import (
 
 const TABLE_MAX_PAGES = 100
 const PAGES_MAX_ROWS = 14
+const ID_SIZE = 4
 const USERNAME_SIZE = 32
-const EMAIL_SIZE = 32
+const EMAIL_SIZE = 255
+const ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE
+const PAGE_SIZE int32 = 4096
 
 var table *Table
 
@@ -23,6 +27,16 @@ type Row struct {
 	id       uint32
 	username [USERNAME_SIZE]byte
 	email    [EMAIL_SIZE]byte
+}
+
+func (r *Row) Serialize() []byte {
+	buf := make([]byte, ROW_SIZE)
+	binary.LittleEndian.PutUint32(buf[:ID_SIZE], r.id)
+	copy(buf[ID_SIZE:ID_SIZE+USERNAME_SIZE], r.username[:])
+	copy(buf[ID_SIZE+USERNAME_SIZE:], r.email[:])
+
+	fmt.Println("Length of serialized bytes:", len(buf)) // Print the length of bytes
+	return buf
 }
 
 type Statement struct {
@@ -41,7 +55,23 @@ type Table struct {
 	pager    *Pager
 }
 
-// NOTE: This is our Sql Compiler
+func WriteRowToFile(pager *Pager, row Row, num_rows int32) error {
+	var err error
+	var offset int32
+	if num_rows == 0 {
+		offset = 0
+	} else {
+		offset = ROW_SIZE * (num_rows + 1)
+	}
+	_, err = pager.file_descriptor.Seek(int64(offset), 0)
+	if err != nil {
+		return err
+	}
+
+	_, err = pager.file_descriptor.Write(row.Serialize())
+	return err
+}
+
 func prepare_statement(input string, statement *Statement) error {
 	fields := strings.Fields(input)
 	var err error
@@ -92,6 +122,7 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 			//NOTE: We manage the array ourselves, instead of using append, because arrays are fixed sized and slices are dynamically sized
 			//Arrays will be much more efficient
 			(*table.pager.pages[pageIndex])[rowIndex] = rowToInsert
+			WriteRowToFile(table.pager, rowToInsert, int32(table.num_rows))
 			table.num_rows += 1
 		}
 	case "statement_select":
