@@ -105,6 +105,48 @@ func prepare_statement(input string, statement *Statement) error {
 	return PREPARE_UNRECOGNIZED_STATEMENT
 }
 
+func print_cache(pageIndex int, writer io.Writer) {
+	for i := 0; i <= pageIndex; i++ {
+		startIndex := i * PAGES_MAX_ROWS
+		endIndex := min((i+1)*PAGES_MAX_ROWS, table.num_rows)
+		for j := startIndex; j < endIndex; j++ {
+			selectedRow := (*table.pager.pages[i])[j%PAGES_MAX_ROWS] // Adjust index for page
+			fmt.Fprintf(writer, "(%d %s %s)\n", selectedRow.id, selectedRow.username, selectedRow.email)
+		}
+	}
+}
+
+// NOTE: Page starts at 1
+func read_page(page_number int) error {
+	fmt.Println("IN READ_PAGES")
+	//TODO:
+	// 1. If page 1, copy bytes 0:PAGE_SIZE into a buffer
+	// 2. Once we have the buffer, loop over the contents and read data into Pager struct
+	file, err := os.Open("mydb.db")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var starting_offset int = 0
+	var ending_offset int = table.num_rows * ROW_SIZE
+	_, err = file.Seek(int64(starting_offset), io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	bytesToRead := ending_offset - starting_offset
+	buf := make([]byte, bytesToRead)
+	_, err = io.ReadFull(file, buf[:bytesToRead])
+	if err != nil {
+		// Handle error
+		return err
+	}
+	fmt.Println(buf)
+
+	return nil
+}
+
 func execute_statement(statement *Statement, writer io.Writer) error {
 	if table.num_rows >= TABLE_MAX_PAGES*PAGES_MAX_ROWS {
 		return EXECUTE_TABLE_FULL
@@ -127,14 +169,19 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 		}
 	case "statement_select":
 		{
-			for i := 0; i <= pageIndex; i++ {
-				startIndex := i * PAGES_MAX_ROWS
-				endIndex := min((i+1)*PAGES_MAX_ROWS, table.num_rows)
-				for j := startIndex; j < endIndex; j++ {
-					selectedRow := (*table.pager.pages[i])[j%PAGES_MAX_ROWS] // Adjust index for page
-					fmt.Fprintf(writer, "(%d %s %s)\n", selectedRow.id, selectedRow.username, selectedRow.email)
+			//TODO: 1. Check if value is in cache(which is this for loop)
+			//print_cache(pageIndex, writer)
+			//TODO: 2. If not, get values from file, print, and store in data structure
+			number_of_pages := (table.num_rows / PAGES_MAX_ROWS) + 1
+			for i := 1; i <= number_of_pages; i++ {
+				err := read_page(i)
+				if err != nil {
+					fmt.Println("Error reading page from db")
+					fmt.Println(err)
 				}
 			}
+			print_cache(pageIndex, writer)
+
 		}
 	default:
 		{
@@ -145,15 +192,9 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 }
 
 func db_open(filename string) (*Table, error) {
-	pager, err := pager_open(filename)
-	num_rows := pager.file_length
-	fmt.Println(num_rows)
+	table, err := table_open(filename)
 	if err != nil {
 		return nil, err
-	}
-	table = &Table{
-		num_rows: 0,
-		pager:    pager,
 	}
 	return table, nil
 }
@@ -162,7 +203,7 @@ func db_close(table *Table) {
 	table.pager.file_descriptor.Close()
 }
 
-func pager_open(filename string) (*Pager, error) {
+func table_open(filename string) (*Table, error) {
 	file, err := os.OpenFile("mydb.db", os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, PAGER_OPENING_ERROR
@@ -172,11 +213,19 @@ func pager_open(filename string) (*Pager, error) {
 		fmt.Println("Error getting file info:", err)
 		return nil, PAGER_OPENING_ERROR
 	}
+
 	pager := &Pager{
 		pages:           [TABLE_MAX_PAGES]*[PAGES_MAX_ROWS]Row{}, // Initialize array of pointers
 		file_descriptor: file,                                    // Example value
 		file_length:     fileInfo,                                // Example value
 	}
-	return pager, nil
+	//NOTE: Each row in the file is of size 291 bytes
+	number_of_rows := fileInfo.Size() / ROW_SIZE
+	table = &Table{
+		num_rows: int(number_of_rows),
+		pager:    pager,
+	}
+
+	return table, nil
 
 }
