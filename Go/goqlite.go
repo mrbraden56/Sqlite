@@ -17,8 +17,8 @@ const TABLE_MAX_PAGES = 100
 const PAGES_MAX_ROWS = 14
 const ID_SIZE = 4
 const USERNAME_SIZE = 32
-const EMAIL_SIZE = 255
-const ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE
+const EMAIL_SIZE = 220
+const ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE //NOTE: Size of row = 256
 const PAGE_SIZE int32 = 4096
 
 var table *Table
@@ -32,10 +32,19 @@ type Row struct {
 func (r *Row) Serialize() []byte {
 	buf := make([]byte, ROW_SIZE)
 	binary.LittleEndian.PutUint32(buf[:ID_SIZE], r.id)
+	//NOTE: copy(dst, src)
 	copy(buf[ID_SIZE:ID_SIZE+USERNAME_SIZE], r.username[:])
 	copy(buf[ID_SIZE+USERNAME_SIZE:], r.email[:])
 
 	return buf
+}
+
+func Deserialize(buf []byte) *Row {
+	var row Row
+	row.id = binary.LittleEndian.Uint32(buf[:ID_SIZE])
+	copy(row.username[:], buf[ID_SIZE:ID_SIZE+USERNAME_SIZE])
+	copy(row.email[:], buf[ID_SIZE+USERNAME_SIZE:])
+	return &row
 }
 
 type Statement struct {
@@ -44,9 +53,8 @@ type Statement struct {
 }
 
 type Pager struct {
-	pages           [TABLE_MAX_PAGES]*[PAGES_MAX_ROWS]Row
+	pages           [TABLE_MAX_PAGES]*[PAGE_SIZE]byte
 	file_descriptor *os.File
-	file_length     os.FileInfo
 }
 
 type Table struct {
@@ -54,15 +62,35 @@ type Table struct {
 	pager    *Pager
 }
 
+func AllocatePage(pager *Pager, num_rows int32) {
+	fileInfo, err := pager.file_descriptor.Stat()
+	fileSize := fileInfo.Size()
+	totalRowSize := num_rows * ROW_SIZE
+	if err != nil {
+		fmt.Println(err)
+	}
+	//NOTE: we need to allocate another page
+	if fileSize < int64(totalRowSize) {
+		fmt.Println("Allocating page...")
+		number_of_pages := (table.num_rows / PAGES_MAX_ROWS)
+		var startingOffset int = number_of_pages * int(PAGE_SIZE)
+		_, err = pager.file_descriptor.Seek(int64(startingOffset), io.SeekStart)
+		buf := make([]byte, PAGE_SIZE)
+		_, err = pager.file_descriptor.Write(buf)
+	}
+
+}
+
 func WriteRowToFile(pager *Pager, row Row, num_rows int32) error {
+	//TODO:
+	// Check if we need to write a page
+	// Once page is written, find offset based on num_rows
+	AllocatePage(pager, num_rows+1)
+
 	var err error
 	var offset int32
-	if num_rows == 0 {
-		offset = 0
-	} else {
-		offset = ROW_SIZE * (num_rows + 1)
-	}
-	_, err = pager.file_descriptor.Seek(int64(offset), 0)
+	offset = ROW_SIZE * num_rows
+	_, err = pager.file_descriptor.Seek(int64(offset), io.SeekStart)
 	if err != nil {
 		return err
 	}
@@ -110,15 +138,15 @@ func print_cache(pageIndex int, writer io.Writer) {
 		endIndex := min((i+1)*PAGES_MAX_ROWS, table.num_rows)
 		for j := startIndex; j < endIndex; j++ {
 			selectedRow := (*table.pager.pages[i])[j%PAGES_MAX_ROWS] // Adjust index for page
-			fmt.Fprintf(writer, "(%d %s %s)\n", selectedRow.id, selectedRow.username, selectedRow.email)
+			fmt.Println(selectedRow)
 		}
 	}
 }
 
-// NOTE: Page starts at 1
+// NOTE: Page starts at 0
 func read_page(page_number int) error {
 	//TODO:
-	// 1. If page 1, copy bytes 0:PAGE_SIZE into a buffer
+	// 1. If page 0, copy bytes 0:PAGE_SIZE into a buffer
 	// 2. Once we have the buffer, loop over the contents and read data into Pager struct
 	file, err := os.Open("mydb.db")
 	if err != nil {
@@ -126,21 +154,30 @@ func read_page(page_number int) error {
 	}
 	defer file.Close()
 
-	var starting_offset int = 0
-	var ending_offset int = table.num_rows * ROW_SIZE
+	var starting_offset int = page_number * int(PAGE_SIZE)
+	var ending_offset int = int(PAGE_SIZE) + starting_offset
 	_, err = file.Seek(int64(starting_offset), io.SeekStart)
 	if err != nil {
 		return err
 	}
 
 	bytesToRead := ending_offset - starting_offset
-	buf := make([]byte, bytesToRead)
-	_, err = io.ReadFull(file, buf[:bytesToRead])
+	fileBuff := make([]byte, bytesToRead)
+	_, err = io.ReadFull(file, fileBuff[:bytesToRead])
 	if err != nil {
 		// Handle error
 		return err
 	}
-	fmt.Println(buf)
+
+	for i := 0; i < int(table.num_rows*ROW_SIZE); i += ROW_SIZE {
+		dst := make([]byte, ROW_SIZE)
+		copy(dst[:], fileBuff[i:i+ROW_SIZE])
+		row := Deserialize(dst)
+		if row.id == 0 {
+			break
+		}
+		fmt.Printf("(%d %s %s)\n", row.id, row.username, row.email)
+	}
 
 	return nil
 }
@@ -153,32 +190,31 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 	rowToInsert := statement.row
 	pageIndex := table.num_rows / PAGES_MAX_ROWS
 	rowIndex := table.num_rows % PAGES_MAX_ROWS
-	if table.pager.pages[pageIndex] == nil {
-		table.pager.pages[pageIndex] = new([PAGES_MAX_ROWS]Row)
-	}
 	switch statement.statement_type {
 	case "statement_insert":
 		{
 			//NOTE: We manage the array ourselves, instead of using append, because arrays are fixed sized and slices are dynamically sized
 			//Arrays will be much more efficient
-			(*table.pager.pages[pageIndex])[rowIndex] = rowToInsert
 			WriteRowToFile(table.pager, rowToInsert, int32(table.num_rows))
 			table.num_rows += 1
+			fileInfo, _ := table.pager.file_descriptor.Stat()
+			fileSize := fileInfo.Size()
+			fmt.Printf("Inserting: Page Number: %d; Row Number: %d; File Size: %d;\n", pageIndex, rowIndex, fileSize)
 		}
 	case "statement_select":
 		{
 			//TODO: 1. Check if value is in cache(which is this for loop)
 			//print_cache(pageIndex, writer)
 			//TODO: 2. If not, get values from file, print, and store in data structure
-			number_of_pages := (table.num_rows / PAGES_MAX_ROWS) + 1
-			for i := 1; i <= number_of_pages; i++ {
+			number_of_pages := (table.num_rows / PAGES_MAX_ROWS)
+			for i := 0; i < number_of_pages; i++ {
 				err := read_page(i)
 				if err != nil {
 					fmt.Println("Error reading page from db")
 					fmt.Println(err)
 				}
 			}
-			print_cache(pageIndex, writer)
+			//print_cache(pageIndex, writer)
 
 		}
 	default:
@@ -213,11 +249,9 @@ func table_open(filename string) (*Table, error) {
 	}
 
 	pager := &Pager{
-		pages:           [TABLE_MAX_PAGES]*[PAGES_MAX_ROWS]Row{}, // Initialize array of pointers
-		file_descriptor: file,                                    // Example value
-		file_length:     fileInfo,                                // Example value
+		file_descriptor: file, // Example value
 	}
-	//NOTE: Each row in the file is of size 291 bytes
+	//NOTE: Each row in the file is of size 256 bytes
 	number_of_rows := fileInfo.Size() / ROW_SIZE
 	table = &Table{
 		num_rows: int(number_of_rows),
