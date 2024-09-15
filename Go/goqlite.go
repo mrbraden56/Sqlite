@@ -35,7 +35,6 @@ func (r *Row) Serialize() []byte {
 	copy(buf[ID_SIZE:ID_SIZE+USERNAME_SIZE], r.username[:])
 	copy(buf[ID_SIZE+USERNAME_SIZE:], r.email[:])
 
-	fmt.Println("Length of serialized bytes:", len(buf)) // Print the length of bytes
 	return buf
 }
 
@@ -118,7 +117,6 @@ func print_cache(pageIndex int, writer io.Writer) {
 
 // NOTE: Page starts at 1
 func read_page(page_number int) error {
-	fmt.Println("IN READ_PAGES")
 	//TODO:
 	// 1. If page 1, copy bytes 0:PAGE_SIZE into a buffer
 	// 2. Once we have the buffer, loop over the contents and read data into Pager struct
