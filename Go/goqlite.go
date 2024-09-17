@@ -188,8 +188,8 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 	}
 
 	rowToInsert := statement.row
-	pageIndex := table.num_rows / PAGES_MAX_ROWS
-	rowIndex := table.num_rows % PAGES_MAX_ROWS
+	// pageIndex := table.num_rows / PAGES_MAX_ROWS
+	// rowIndex := table.num_rows % PAGES_MAX_ROWS
 	switch statement.statement_type {
 	case "statement_insert":
 		{
@@ -197,17 +197,17 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 			//Arrays will be much more efficient
 			WriteRowToFile(table.pager, rowToInsert, int32(table.num_rows))
 			table.num_rows += 1
-			fileInfo, _ := table.pager.file_descriptor.Stat()
-			fileSize := fileInfo.Size()
-			fmt.Printf("Inserting: Page Number: %d; Row Number: %d; File Size: %d;\n", pageIndex, rowIndex, fileSize)
 		}
 	case "statement_select":
 		{
 			//TODO: 1. Check if value is in cache(which is this for loop)
 			//print_cache(pageIndex, writer)
 			//TODO: 2. If not, get values from file, print, and store in data structure
-			number_of_pages := (table.num_rows / PAGES_MAX_ROWS)
-			for i := 0; i < number_of_pages; i++ {
+
+			fileInfo, _ := table.pager.file_descriptor.Stat()
+			number_of_rows := fileInfo.Size() / ROW_SIZE
+			number_of_pages := (number_of_rows / PAGES_MAX_ROWS)
+			for i := 0; i < int(number_of_pages); i++ {
 				err := read_page(i)
 				if err != nil {
 					fmt.Println("Error reading page from db")
