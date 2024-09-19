@@ -62,6 +62,12 @@ type Table struct {
 	pager    *Pager
 }
 
+type Cursor struct {
+	table        *Table
+	row_num      int
+	end_of_table bool
+}
+
 func AllocatePage(pager *Pager, num_rows int32) {
 	fileInfo, err := pager.file_descriptor.Stat()
 	fileSize := fileInfo.Size()
@@ -223,6 +229,23 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func table_start(table *Table) *Cursor {
+	cursor := &Cursor{
+		table:        table,
+		row_num:      0,
+		end_of_table: table.num_rows == 0,
+	}
+	return cursor
+}
+func table_end(table *Table) *Cursor {
+	cursor := &Cursor{
+		table:        table,
+		row_num:      table.num_rows,
+		end_of_table: true,
+	}
+	return cursor
 }
 
 func db_open(filename string) (*Table, error) {
