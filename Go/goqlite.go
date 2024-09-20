@@ -20,7 +20,9 @@ const USERNAME_SIZE = 32
 const EMAIL_SIZE = 220
 const ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE //NOTE: Size of row = 256
 const PAGE_SIZE int32 = 4096
+const ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE
 
+var global_writer io.Writer
 var table *Table
 
 type Row struct {
@@ -77,7 +79,6 @@ func AllocatePage(pager *Pager, num_rows int32) {
 	}
 	//NOTE: we need to allocate another page
 	if fileSize < int64(totalRowSize) {
-		fmt.Println("Allocating page...")
 		number_of_pages := (table.num_rows / PAGES_MAX_ROWS)
 		var startingOffset int = number_of_pages * int(PAGE_SIZE)
 		_, err = pager.file_descriptor.Seek(int64(startingOffset), io.SeekStart)
@@ -126,10 +127,7 @@ func prepare_statement(input string, statement *Statement) error {
 			return PREPARE_PARSING_ERROR
 		}
 		statement.row.id = uint32(int_id)
-		if err != nil {
-			fmt.Println("Can't convert this to an int!")
-			return PREPARE_PARSING_ERROR
-		}
+
 		copy(statement.row.username[:], fields[2])
 		copy(statement.row.email[:], fields[3])
 		return nil
@@ -138,7 +136,7 @@ func prepare_statement(input string, statement *Statement) error {
 	return PREPARE_UNRECOGNIZED_STATEMENT
 }
 
-func print_cache(pageIndex int, writer io.Writer) {
+func print_cache(pageIndex int) {
 	for i := 0; i <= pageIndex; i++ {
 		startIndex := i * PAGES_MAX_ROWS
 		endIndex := min((i+1)*PAGES_MAX_ROWS, table.num_rows)
@@ -175,20 +173,21 @@ func read_page(page_number int) error {
 		return err
 	}
 
-	for i := 0; i < int(table.num_rows*ROW_SIZE); i += ROW_SIZE {
+	for i := 0; i < int(ROWS_PER_PAGE*ROW_SIZE); i += ROW_SIZE {
 		dst := make([]byte, ROW_SIZE)
 		copy(dst[:], fileBuff[i:i+ROW_SIZE])
 		row := Deserialize(dst)
 		if row.id == 0 {
 			break
 		}
-		fmt.Printf("(%d %s %s)\n", row.id, row.username, row.email)
+		fmt.Fprintf(global_writer, "(%d %s %s)\n", row.id, row.username, row.email)
 	}
 
 	return nil
 }
 
 func execute_statement(statement *Statement, writer io.Writer) error {
+	global_writer = writer
 	if table.num_rows >= TABLE_MAX_PAGES*PAGES_MAX_ROWS {
 		return EXECUTE_TABLE_FULL
 	}
