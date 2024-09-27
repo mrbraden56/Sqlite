@@ -19,7 +19,7 @@ const ID_SIZE = 4
 const USERNAME_SIZE = 32
 const EMAIL_SIZE = 220
 const ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE //NOTE: Size of row = 256
-const PAGE_SIZE int32 = 4096
+const PAGE_SIZE uint32 = 4096
 const ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE
 
 var global_writer io.Writer
@@ -54,24 +54,20 @@ type Statement struct {
 	row            Row
 }
 
-//TODO: Example of how do implement Tree in a struct
-// type BPlusTree struct {
-// 	root [TABLE_MAX_PAGES]*[PAGE_SIZE]byte
-// }
-// func (t *BPlusTree) Insert(key int, value []byte) error {
-// 	// Implementation details here
-// 	return nil
-// }
+// TODO: Example of how do implement Tree in a struct
+type BPlusTree struct {
+	root [TABLE_MAX_PAGES]*[PAGE_SIZE]byte
+}
 
 type Pager struct {
-	pages [TABLE_MAX_PAGES]*[PAGE_SIZE]byte
-	//tree *BPlusTree
+	tree            *BPlusTree
 	file_descriptor *os.File
+	num_pages       int
 }
 
 type Table struct {
-	num_rows int
-	pager    *Pager
+	root_page_number int
+	pager            *Pager
 }
 
 func AllocatePage(pager *Pager, num_rows int32) {
@@ -107,6 +103,7 @@ func WriteRowToFile(pager *Pager, row Row, num_rows int32) error {
 	}
 
 	_, err = pager.file_descriptor.Write(row.Serialize())
+	table.num_rows += 1
 	return err
 }
 
@@ -138,17 +135,6 @@ func prepare_statement(input string, statement *Statement) error {
 	}
 
 	return PREPARE_UNRECOGNIZED_STATEMENT
-}
-
-func print_cache(pageIndex int) {
-	for i := 0; i <= pageIndex; i++ {
-		startIndex := i * PAGES_MAX_ROWS
-		endIndex := min((i+1)*PAGES_MAX_ROWS, table.num_rows)
-		for j := startIndex; j < endIndex; j++ {
-			selectedRow := (*table.pager.pages[i])[j%PAGES_MAX_ROWS] // Adjust index for page
-			fmt.Println(selectedRow)
-		}
-	}
 }
 
 // NOTE: Page starts at 0
@@ -192,20 +178,18 @@ func read_page(page_number int) error {
 
 func execute_statement(statement *Statement, writer io.Writer) error {
 	global_writer = writer
-	if table.num_rows >= TABLE_MAX_PAGES*PAGES_MAX_ROWS {
+	if table.pager.num_pages >= TABLE_MAX_PAGES {
 		return EXECUTE_TABLE_FULL
 	}
 
 	rowToInsert := statement.row
-	// pageIndex := table.num_rows / PAGES_MAX_ROWS
-	// rowIndex := table.num_rows % PAGES_MAX_ROWS
 	switch statement.statement_type {
 	case "statement_insert":
 		{
 			//NOTE: We manage the array ourselves, instead of using append, because arrays are fixed sized and slices are dynamically sized
 			//Arrays will be much more efficient
 			WriteRowToFile(table.pager, rowToInsert, int32(table.num_rows))
-			table.num_rows += 1
+			insert(table, rowToInsert)
 		}
 	case "statement_select":
 		{
@@ -222,7 +206,6 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 					break
 				}
 			}
-			//print_cache(pageIndex, writer)
 
 		}
 	default:
@@ -255,15 +238,15 @@ func table_open(filename string) (*Table, error) {
 		fmt.Println("Error getting file info:", err)
 		return nil, PAGER_OPENING_ERROR
 	}
-
+	num_of_pages := int(fileInfo.Size()) / int(PAGE_SIZE)
 	pager := &Pager{
 		file_descriptor: file, // Example value
+		num_pages:       num_of_pages,
 	}
 	//NOTE: Each row in the file is of size 256 bytes
-	number_of_rows := fileInfo.Size() / ROW_SIZE
 	table = &Table{
-		num_rows: int(number_of_rows),
-		pager:    pager,
+		root_page_number: 0,
+		pager:            pager,
 	}
 
 	return table, nil

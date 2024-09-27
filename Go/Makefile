@@ -1,9 +1,9 @@
 run:
-	go run main.go goqlite.go mydb.db
+	go run main.go goqlite.go b_tree.go mydb.db
 
 debug:
 	#go run main.go goqlite.go -d -input="select" mydb.db
-	go build -gcflags="all=-N -l" -o goqlite main.go goqlite.go
+	go build -gcflags="all=-N -l" -o goqlite main.go goqlite.go b_tree.go
 
 
 
