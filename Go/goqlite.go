@@ -54,20 +54,24 @@ type Statement struct {
 	row            Row
 }
 
+//TODO: Example of how do implement Tree in a struct
+// type BPlusTree struct {
+// 	root [TABLE_MAX_PAGES]*[PAGE_SIZE]byte
+// }
+// func (t *BPlusTree) Insert(key int, value []byte) error {
+// 	// Implementation details here
+// 	return nil
+// }
+
 type Pager struct {
-	pages           [TABLE_MAX_PAGES]*[PAGE_SIZE]byte
+	pages [TABLE_MAX_PAGES]*[PAGE_SIZE]byte
+	//tree *BPlusTree
 	file_descriptor *os.File
 }
 
 type Table struct {
 	num_rows int
 	pager    *Pager
-}
-
-type Cursor struct {
-	table        *Table
-	row_num      int
-	end_of_table bool
 }
 
 func AllocatePage(pager *Pager, num_rows int32) {
@@ -215,8 +219,7 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 			for i := 0; i < int(number_of_pages); i++ {
 				err := read_page(i)
 				if err != nil {
-					fmt.Println("Error reading page from db")
-					fmt.Println(err)
+					break
 				}
 			}
 			//print_cache(pageIndex, writer)
@@ -228,23 +231,6 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 		}
 	}
 	return nil
-}
-
-func table_start(table *Table) *Cursor {
-	cursor := &Cursor{
-		table:        table,
-		row_num:      0,
-		end_of_table: table.num_rows == 0,
-	}
-	return cursor
-}
-func table_end(table *Table) *Cursor {
-	cursor := &Cursor{
-		table:        table,
-		row_num:      table.num_rows,
-		end_of_table: true,
-	}
-	return cursor
 }
 
 func db_open(filename string) (*Table, error) {

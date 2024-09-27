@@ -26,7 +26,9 @@ func TestMetaCommands(t *testing.T) {
 	writer := &bytes.Buffer{}
 
 	// Step 3: Run the CLI with the mocked input/output
-	runCLI(reader, writer)
+	var debugMode bool
+	var debugInput string
+	runCLI(reader, writer, debugMode, debugInput)
 
 	// Step 4: Capture and verify output
 	output := writer.String()
@@ -42,7 +44,9 @@ func TestSimpleInsertSelect(t *testing.T) {
 	reader := strings.NewReader(input)
 	writer := &bytes.Buffer{}
 
-	runCLI(reader, writer)
+	var debugMode bool
+	var debugInput string
+	runCLI(reader, writer, debugMode, debugInput)
 
 	output := writer.String()
 	output = strings.TrimSpace(strings.ReplaceAll(output, "\x00", ""))
@@ -71,7 +75,9 @@ func TestTableFull(t *testing.T) {
 	reader := strings.NewReader(inputBuilder.String())
 	writer := &bytes.Buffer{}
 
-	runCLI(reader, writer)
+	var debugMode bool
+	var debugInput string
+	runCLI(reader, writer, debugMode, debugInput)
 
 	output := writer.String()
 	output = strings.TrimSpace(strings.ReplaceAll(output, "\x00", ""))
@@ -93,7 +99,9 @@ func TestNegativeId(t *testing.T) {
 	reader := strings.NewReader(input)
 	writer := &bytes.Buffer{}
 
-	runCLI(reader, writer)
+	var debugMode bool
+	var debugInput string
+	runCLI(reader, writer, debugMode, debugInput)
 
 	output := writer.String()
 	output = strings.TrimSpace(strings.ReplaceAll(output, "\x00", ""))
@@ -107,12 +115,14 @@ func TestPersistance(t *testing.T) {
 	input := "insert 1 braden braden@gmail.com\n"
 	reader := strings.NewReader(input)
 	writer := &bytes.Buffer{}
-	runCLI(reader, writer)
+	var debugMode bool
+	var debugInput string
+	runCLI(reader, writer, debugMode, debugInput)
 
 	input = ".exit\n"
 	reader = strings.NewReader(input)
 	writer = &bytes.Buffer{}
-	runCLI(reader, writer)
+	runCLI(reader, writer, debugMode, debugInput)
 	output_test := writer.String()
 	t.Log(output_test)
 	t.Log("test")
@@ -120,7 +130,7 @@ func TestPersistance(t *testing.T) {
 	input1 := "select\n"
 	reader1 := strings.NewReader(input1)
 	writer1 := &bytes.Buffer{}
-	runCLI(reader1, writer1)
+	runCLI(reader1, writer1, debugMode, debugInput)
 
 	expectedOutput := "(1 braden braden@gmail.com)\n"
 
@@ -146,8 +156,6 @@ func randomString(n int) string {
 	return string(result)
 }
 
-// FIX:
-// Works now, getting EOF error now
 func TestComplexInsertSelect(t *testing.T) {
 	var inputBuilder strings.Builder
 	var expectedOutputBuilder strings.Builder
@@ -164,17 +172,19 @@ func TestComplexInsertSelect(t *testing.T) {
 	expectedOutput := expectedOutputBuilder.String()
 	reader := strings.NewReader(input)
 	writer := &bytes.Buffer{}
-	runCLI(reader, writer)
+	var debugMode bool
+	var debugInput string
+	runCLI(reader, writer, debugMode, debugInput)
 
 	input = ".exit\n"
 	reader = strings.NewReader(input)
 	writer = &bytes.Buffer{}
-	runCLI(reader, writer)
+	runCLI(reader, writer, debugMode, debugInput)
 
 	input1 := "select\n"
 	reader1 := strings.NewReader(input1)
 	writer1 := &bytes.Buffer{}
-	runCLI(reader1, writer1)
+	runCLI(reader1, writer1, debugMode, debugInput)
 
 	output := writer1.String()
 	output = strings.TrimSpace(strings.ReplaceAll(output, "\x00", ""))
@@ -184,8 +194,8 @@ func TestComplexInsertSelect(t *testing.T) {
 	}
 
 	// Clean up by removing the database file
-	// err := exec.Command("rm", "-r", "mydb.db").Run()
-	// if err != nil {
-	// 	t.Fatalf("Failed to remove database file: %v", err)
-	// }
+	err := exec.Command("rm", "-r", "mydb.db").Run()
+	if err != nil {
+		t.Fatalf("Failed to remove database file: %v", err)
+	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -15,8 +16,13 @@ var PREPARE_NEGATIVE_ID = errors.New("Error: Cannot insert a negative id")
 var EXECUTE_TABLE_FULL = errors.New("Error: Table Full")
 var PAGER_OPENING_ERROR = errors.New("Error: Opening Pager Failed")
 
-func runCLI(reader io.Reader, writer io.Writer) {
-	filename := os.Args[1]
+func runCLI(reader io.Reader, writer io.Writer, debug bool, debugInput string) {
+	var filename string
+	if debug {
+		filename = os.Args[3]
+	} else {
+		filename = os.Args[1]
+	}
 	var err error
 	table, err = db_open(filename)
 	if err != nil {
@@ -30,15 +36,23 @@ func runCLI(reader io.Reader, writer io.Writer) {
 	scanner := bufio.NewScanner(reader)
 
 	for {
-		fmt.Print("Goqlite> ")
-		if !scanner.Scan() {
-			if err := scanner.Err(); err != nil {
-				fmt.Fprintln(writer, "Error reading input:", err)
+		if !debug {
+			fmt.Print("Goqlite> ")
+			if !scanner.Scan() {
+				if err := scanner.Err(); err != nil {
+					fmt.Fprintln(writer, "Error reading input:", err)
+				}
+				return
 			}
-			return
 		}
 
-		input := strings.TrimSpace(scanner.Text())
+		var input string
+		if debug {
+			input = debugInput
+		} else {
+
+			input = strings.TrimSpace(scanner.Text())
+		}
 
 		// Meta Commands
 		if len(input) > 0 && input[0] == '.' {
@@ -80,9 +94,27 @@ func runCLI(reader io.Reader, writer io.Writer) {
 				fmt.Fprintln(writer, "Unrecognized Error")
 			}
 		}
+		if debug {
+			break
+		}
 	}
 }
 
+var debugMode bool
+var debugInput string
+
 func main() {
-	runCLI(os.Stdin, os.Stdout)
+
+	flag.BoolVar(&debugMode, "d", false, "Run in debug mode")
+	flag.StringVar(&debugInput, "input", "", "Input for debug mode")
+	flag.Parse()
+	if debugMode {
+		fmt.Println("Running in debug mode")
+		fmt.Println(debugInput)
+		// Add your debug mode logic here
+	} else {
+		fmt.Println("Running in normal mode")
+		// Add your normal mode logic here
+	}
+	runCLI(os.Stdin, os.Stdout, debugMode, debugInput)
 }
