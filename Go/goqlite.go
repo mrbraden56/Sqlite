@@ -54,7 +54,7 @@ type Statement struct {
 	row            Row
 }
 
-// TODO: Example of how do implement Tree in a struct
+// NOTE: Each page will represent a B+ Tree using an array
 type BPlusTree struct {
 	root [TABLE_MAX_PAGES]*[PAGE_SIZE]byte
 }
@@ -65,34 +65,46 @@ type Pager struct {
 	num_pages       int
 }
 
+func (p *Pager) AllocatePage() {
+	number_of_pages := (table.num_rows / PAGES_MAX_ROWS)
+	var startingOffset int = number_of_pages * int(PAGE_SIZE)
+	_, _ = p.file_descriptor.Seek(int64(startingOffset), io.SeekStart)
+	buf := make([]byte, PAGE_SIZE)
+	_, _ = p.file_descriptor.Write(buf)
+
+}
+
+func (p *Pager) AllocateLeafNode() {
+	number_of_pages := (table.num_rows / PAGES_MAX_ROWS)
+	var startingOffset int = number_of_pages * int(PAGE_SIZE)
+	_, _ = p.file_descriptor.Seek(int64(startingOffset), io.SeekStart)
+	buf := make([]byte, PAGE_SIZE)
+	_, _ = p.file_descriptor.Write(buf)
+
+	p.file_descriptor.Seek(int64(NODE_TYPE_OFFSET), io.SeekStart)
+	p.file_descriptor.Write([]byte{1})
+
+	p.file_descriptor.Seek(int64(IS_ROOT_OFFSET), io.SeekStart)
+	p.file_descriptor.Write([]byte{1})
+
+	p.file_descriptor.Seek(int64(PARENT_POINTER_OFFSET), io.SeekStart)
+	p.file_descriptor.Write([]byte{0, 0, 0, 0})
+
+	p.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
+	p.file_descriptor.Write([]byte{0, 0})
+
+	p.file_descriptor.Seek(int64(LEAF_NODE_NUM_CELLS_OFFSET), io.SeekStart)
+	p.file_descriptor.Write([]byte{0, 0, 0, 0})
+
+}
+
 type Table struct {
 	root_page_number int
+	num_rows         int
 	pager            *Pager
 }
 
-func AllocatePage(pager *Pager, num_rows int32) {
-	fileInfo, err := pager.file_descriptor.Stat()
-	fileSize := fileInfo.Size()
-	totalRowSize := num_rows * ROW_SIZE
-	if err != nil {
-		fmt.Println(err)
-	}
-	//NOTE: we need to allocate another page
-	if fileSize < int64(totalRowSize) {
-		number_of_pages := (table.num_rows / PAGES_MAX_ROWS)
-		var startingOffset int = number_of_pages * int(PAGE_SIZE)
-		_, err = pager.file_descriptor.Seek(int64(startingOffset), io.SeekStart)
-		buf := make([]byte, PAGE_SIZE)
-		_, err = pager.file_descriptor.Write(buf)
-	}
-
-}
-
 func WriteRowToFile(pager *Pager, row Row, num_rows int32) error {
-	//TODO:
-	// Check if we need to write a page
-	// Once page is written, find offset based on num_rows
-	AllocatePage(pager, num_rows+1)
 
 	var err error
 	var offset int32
@@ -186,10 +198,12 @@ func execute_statement(statement *Statement, writer io.Writer) error {
 	switch statement.statement_type {
 	case "statement_insert":
 		{
-			//NOTE: We manage the array ourselves, instead of using append, because arrays are fixed sized and slices are dynamically sized
-			//Arrays will be much more efficient
-			WriteRowToFile(table.pager, rowToInsert, int32(table.num_rows))
-			insert(table, rowToInsert)
+
+			//WriteRowToFile(table.pager, rowToInsert, int32(table.num_rows))
+			err := table.Insert(rowToInsert)
+			if err != nil {
+				return err
+			}
 		}
 	case "statement_select":
 		{
@@ -252,3 +266,8 @@ func table_open(filename string) (*Table, error) {
 	return table, nil
 
 }
+
+//TODO:
+//1. Finish allocating the initial leaf node with all of the meta data
+//2. Finish the logic of inserting data into the leaf nodes
+// 2a. This includes the keys, I forgot about that

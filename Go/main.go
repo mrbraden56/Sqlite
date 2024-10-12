@@ -91,7 +91,7 @@ func runCLI(reader io.Reader, writer io.Writer, debug bool, debugInput string) {
 			case errors.Is(err, EXECUTE_TABLE_FULL):
 				fmt.Fprintln(writer, EXECUTE_TABLE_FULL)
 			default:
-				fmt.Fprintln(writer, "Unrecognized Error")
+				fmt.Fprintln(writer, err)
 			}
 		}
 		if debug {
