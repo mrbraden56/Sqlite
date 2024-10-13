@@ -74,10 +74,8 @@ func (p *Pager) AllocatePage() {
 
 }
 
-func (p *Pager) AllocateLeafNode() {
-	number_of_pages := (table.num_rows / PAGES_MAX_ROWS)
-	var startingOffset int = number_of_pages * int(PAGE_SIZE)
-	_, _ = p.file_descriptor.Seek(int64(startingOffset), io.SeekStart)
+func (p *Pager) AllocateRoot() {
+	_, _ = p.file_descriptor.Seek(int64(0), io.SeekStart)
 	buf := make([]byte, PAGE_SIZE)
 	_, _ = p.file_descriptor.Write(buf)
 
@@ -88,13 +86,22 @@ func (p *Pager) AllocateLeafNode() {
 	p.file_descriptor.Write([]byte{1})
 
 	p.file_descriptor.Seek(int64(PARENT_POINTER_OFFSET), io.SeekStart)
-	p.file_descriptor.Write([]byte{0, 0, 0, 0})
+	p.file_descriptor.Write([]byte{8, 0, 0, 0})
 
 	p.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
-	p.file_descriptor.Write([]byte{0, 0})
+	buf = make([]byte, 2)
+	binary.LittleEndian.PutUint16(buf, uint16(LEAF_NODE_KEY_OFFSET))
+	p.file_descriptor.Write(buf)
 
 	p.file_descriptor.Seek(int64(LEAF_NODE_NUM_CELLS_OFFSET), io.SeekStart)
-	p.file_descriptor.Write([]byte{0, 0, 0, 0})
+	p.file_descriptor.Write([]byte{8, 0, 0, 0})
+
+	// fmt.Printf("NODE_TYPE_OFFSET: %d\n", NODE_TYPE_OFFSET)
+	// fmt.Printf("IS_ROOT_OFFSET: %d\n", IS_ROOT_OFFSET)
+	// fmt.Printf("PARENT_POINTER_OFFSET: %d\n", PARENT_POINTER_OFFSET)
+	// fmt.Printf("FREE_SPACE_POINTER_OFFSET: %d\n", FREE_SPACE_POINTER_OFFSET)
+	// fmt.Printf("LEAF_NODE_NUM_CELLS_OFFSET: %d\n", LEAF_NODE_NUM_CELLS_OFFSET)
+	// fmt.Printf("KEY OFFSET: %d\n", LEAF_NODE_KEY_OFFSET)
 
 }
 

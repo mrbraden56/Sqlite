@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -10,7 +12,7 @@ const (
 	NODE_TYPE_SIZE          uint32 = 1                                                   // 1 byte
 	NODE_TYPE_OFFSET        uint32 = 0                                                   // byte 0
 	IS_ROOT_SIZE            uint32 = 1                                                   // 1 byte
-	IS_ROOT_OFFSET          uint32 = NODE_TYPE_SIZE                                      // byte 1
+	IS_ROOT_OFFSET          uint32 = 1                                                   // byte 1
 	PARENT_POINTER_SIZE     uint32 = 4                                                   // 4 bytes
 	PARENT_POINTER_OFFSET   uint32 = IS_ROOT_OFFSET + IS_ROOT_SIZE                       // byte 2
 	COMMON_NODE_HEADER_SIZE uint32 = NODE_TYPE_SIZE + IS_ROOT_SIZE + PARENT_POINTER_SIZE // byte 6
@@ -32,8 +34,8 @@ const (
 
 // Leaf Node Body Layout
 const (
-	LEAF_NODE_KEY_SIZE        uint32 = 4                                               // 4 bytes
-	LEAF_NODE_KEY_OFFSET      uint32 = 0                                               // byte 0
+	LEAF_NODE_KEY_SIZE        uint32 = 4
+	LEAF_NODE_KEY_OFFSET      uint32 = LEAF_NODE_HEADER_SIZE
 	LEAF_NODE_VALUE_SIZE      uint32 = ROW_SIZE                                        // 291 bytes (assuming ROW_SIZE = 291)
 	LEAF_NODE_VALUE_OFFSET    uint32 = LEAF_NODE_KEY_OFFSET + LEAF_NODE_KEY_SIZE       // byte 4
 	LEAF_NODE_CELL_SIZE       uint32 = LEAF_NODE_KEY_SIZE + LEAF_NODE_VALUE_SIZE       // 295 bytes
@@ -50,7 +52,7 @@ func (t *Table) Insert(row Row) error {
 	//NOTE: If this is the first insert, we need to allocate the initial page
 	//	Remember, each page is a node in the b tree
 	if fileSize == 0 {
-		t.pager.AllocateLeafNode()
+		t.pager.AllocateRoot()
 	}
 	//NOTE: Checks if there is enough space for a row in the page
 	if (PAGE_SIZE - FREE_SPACE_POINTER_OFFSET) < ROW_SIZE {
@@ -59,6 +61,9 @@ func (t *Table) Insert(row Row) error {
 	}
 
 	_, _ = t.pager.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
+	var freeSpacePointer uint16
+	err = binary.Read(t.pager.file_descriptor, binary.LittleEndian, &freeSpacePointer)
+	fmt.Println(freeSpacePointer)
 	_, _ = t.pager.file_descriptor.Write(row.Serialize())
 	return nil
 }
