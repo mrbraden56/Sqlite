@@ -37,14 +37,21 @@ const (
 	LEAF_NODE_KEY_SIZE   uint32 = 4
 	LEAF_NODE_KEY_OFFSET uint32 = LEAF_NODE_HEADER_SIZE
 
-	LEAF_NODE_VALUE_SIZE   uint32 = USERNAME_SIZE + EMAIL_SIZE                // USERNAME + EMAIL: 252 bytes
+	LEAF_NODE_VALUE_SIZE   uint32 = USERNAME_SIZE + EMAIL_SIZE                // USERNAME + EMAIL: 268 bytes
 	LEAF_NODE_VALUE_OFFSET uint32 = LEAF_NODE_KEY_OFFSET + LEAF_NODE_KEY_SIZE // byte 4
 
-	LEAF_NODE_CELL_SIZE uint32 = LEAF_NODE_KEY_SIZE + LEAF_NODE_VALUE_SIZE // 256 bytes
+	LEAF_NODE_CELL_SIZE uint32 = LEAF_NODE_KEY_SIZE + LEAF_NODE_VALUE_SIZE // 272 bytes
 
 )
 
-func (t *Table) _WriteData(row Row) {
+func (t *Table) readValue(offset int64) int32 {
+	_, _ = t.pager.file_descriptor.Seek(offset, io.SeekStart)
+	buf := make([]byte, 4)
+	t.pager.file_descriptor.Read(buf)
+	return int32(binary.LittleEndian.Uint32(buf))
+}
+
+func (t *Table) _insertfirst(row Row) {
 	// Read the current free space pointer
 	_, _ = t.pager.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
 	var freeSpacePointer uint16
@@ -73,7 +80,60 @@ func (t *Table) _WriteData(row Row) {
 	_, _ = t.pager.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
 	_ = binary.Write(t.pager.file_descriptor, binary.LittleEndian, freeSpacePointer)
 
-	//fmt.Println("Final freeSpacePointer:", freeSpacePointer)
+	fmt.Println("Final freeSpacePointer:", freeSpacePointer)
+}
+
+func (t *Table) _insertbefore(row Row) {
+}
+func (t *Table) _insertafter(row Row) {
+}
+func (t *Table) _insert(row Row) {
+	// Read the current free space pointer
+	_, _ = t.pager.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
+	var freeSpacePointer uint16
+	_ = binary.Read(t.pager.file_descriptor, binary.LittleEndian, &freeSpacePointer)
+
+	minIndex := LEAF_NODE_KEY_OFFSET
+	maxIndex := freeSpacePointer
+	if minIndex == uint32(maxIndex) {
+		//NOTE: If minIndex == maxIndex that means there are no values in node
+
+		// Write Key (ID)
+		_, _ = t.pager.file_descriptor.Seek(int64(freeSpacePointer), io.SeekStart)
+		idBytes := make([]byte, 4)
+		binary.LittleEndian.PutUint32(idBytes, row.id)
+		_, _ = t.pager.file_descriptor.Write(idBytes)
+
+		// Update free space pointer after writing key
+		freeSpacePointer += uint16(LEAF_NODE_KEY_SIZE)
+
+		// Write Values (username and email)
+		buf := make([]byte, USERNAME_SIZE+EMAIL_SIZE)
+		copy(buf[:USERNAME_SIZE], row.username[:])
+		copy(buf[USERNAME_SIZE:], row.email[:])
+		_, _ = t.pager.file_descriptor.Seek(int64(freeSpacePointer), io.SeekStart)
+		_, _ = t.pager.file_descriptor.Write(buf)
+
+		// Update free space pointer after writing values
+		freeSpacePointer += uint16(USERNAME_SIZE + EMAIL_SIZE)
+
+		// Write back the updated free space pointer
+		_, _ = t.pager.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
+		_ = binary.Write(t.pager.file_descriptor, binary.LittleEndian, freeSpacePointer)
+
+		fmt.Println("Final freeSpacePointer:", freeSpacePointer)
+
+	} else {
+		for minIndex <= uint32(maxIndex) {
+			middleIndex := minIndex + ((uint32(maxIndex)-uint32(minIndex))/(2*272))*272
+			fmt.Println("middleIndex:", middleIndex)
+			val := t.readValue(int64(middleIndex))
+			fmt.Println("middleIndex val:", val)
+
+			break
+		}
+
+	}
 }
 
 func (t *Table) Insert(row Row) error {
@@ -92,7 +152,8 @@ func (t *Table) Insert(row Row) error {
 		return errors.New("Not enough space to insert in Page!")
 		//TODO: This is where we would do the split
 	}
-	t._WriteData(row)
+	t._insert(row)
+
 	return nil
 }
 func (t *Table) Select() error {

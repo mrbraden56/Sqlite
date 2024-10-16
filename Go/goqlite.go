@@ -16,10 +16,10 @@ import (
 const TABLE_MAX_PAGES = 100
 const PAGES_MAX_ROWS = 14
 const ID_SIZE = 4
-const USERNAME_SIZE = 32
+const USERNAME_SIZE = 48
 const EMAIL_SIZE = 220
-const ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE //NOTE: Size of row = 256
-const PAGE_SIZE uint32 = 4096
+const ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE //NOTE: Size of row = 272
+const PAGE_SIZE uint32 = 4092
 const ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE
 
 var global_writer io.Writer
@@ -277,3 +277,7 @@ func table_open(filename string) (*Table, error) {
 //TODO:
 //1. The key is numerical value the user enters first and the values are the name/email.
 //Right now we are just inserting the key in unsorted order but we will change that
+//What I did
+//Changed sizing of pages/username so now for leaf node, we have 12 bytes of metadata and
+//a cell size of 272 with a page size of 4092. This makes it so that we will have exactly
+//15 pages per leaf node
