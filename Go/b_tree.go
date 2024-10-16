@@ -34,14 +34,47 @@ const (
 
 // Leaf Node Body Layout
 const (
-	LEAF_NODE_KEY_SIZE        uint32 = 4
-	LEAF_NODE_KEY_OFFSET      uint32 = LEAF_NODE_HEADER_SIZE
-	LEAF_NODE_VALUE_SIZE      uint32 = ROW_SIZE                                        // 291 bytes (assuming ROW_SIZE = 291)
-	LEAF_NODE_VALUE_OFFSET    uint32 = LEAF_NODE_KEY_OFFSET + LEAF_NODE_KEY_SIZE       // byte 4
-	LEAF_NODE_CELL_SIZE       uint32 = LEAF_NODE_KEY_SIZE + LEAF_NODE_VALUE_SIZE       // 295 bytes
-	LEAF_NODE_SPACE_FOR_CELLS uint32 = PAGE_SIZE - LEAF_NODE_HEADER_SIZE               // 4084 bytes (with the new header size)
-	LEAF_NODE_MAX_CELLS       uint32 = LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE // 13 cells (approx.)
+	LEAF_NODE_KEY_SIZE   uint32 = 4
+	LEAF_NODE_KEY_OFFSET uint32 = LEAF_NODE_HEADER_SIZE
+
+	LEAF_NODE_VALUE_SIZE   uint32 = USERNAME_SIZE + EMAIL_SIZE                // USERNAME + EMAIL: 252 bytes
+	LEAF_NODE_VALUE_OFFSET uint32 = LEAF_NODE_KEY_OFFSET + LEAF_NODE_KEY_SIZE // byte 4
+
+	LEAF_NODE_CELL_SIZE uint32 = LEAF_NODE_KEY_SIZE + LEAF_NODE_VALUE_SIZE // 256 bytes
+
 )
+
+func (t *Table) _WriteData(row Row) {
+	// Read the current free space pointer
+	_, _ = t.pager.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
+	var freeSpacePointer uint16
+	_ = binary.Read(t.pager.file_descriptor, binary.LittleEndian, &freeSpacePointer)
+
+	// Write Key (ID)
+	_, _ = t.pager.file_descriptor.Seek(int64(freeSpacePointer), io.SeekStart)
+	idBytes := make([]byte, 4)
+	binary.LittleEndian.PutUint32(idBytes, row.id)
+	_, _ = t.pager.file_descriptor.Write(idBytes)
+
+	// Update free space pointer after writing key
+	freeSpacePointer += uint16(LEAF_NODE_KEY_SIZE)
+
+	// Write Values (username and email)
+	buf := make([]byte, USERNAME_SIZE+EMAIL_SIZE)
+	copy(buf[:USERNAME_SIZE], row.username[:])
+	copy(buf[USERNAME_SIZE:], row.email[:])
+	_, _ = t.pager.file_descriptor.Seek(int64(freeSpacePointer), io.SeekStart)
+	_, _ = t.pager.file_descriptor.Write(buf)
+
+	// Update free space pointer after writing values
+	freeSpacePointer += uint16(USERNAME_SIZE + EMAIL_SIZE)
+
+	// Write back the updated free space pointer
+	_, _ = t.pager.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
+	_ = binary.Write(t.pager.file_descriptor, binary.LittleEndian, freeSpacePointer)
+
+	//fmt.Println("Final freeSpacePointer:", freeSpacePointer)
+}
 
 func (t *Table) Insert(row Row) error {
 	fileInfo, err := t.pager.file_descriptor.Stat()
@@ -59,12 +92,7 @@ func (t *Table) Insert(row Row) error {
 		return errors.New("Not enough space to insert in Page!")
 		//TODO: This is where we would do the split
 	}
-
-	_, _ = t.pager.file_descriptor.Seek(int64(FREE_SPACE_POINTER_OFFSET), io.SeekStart)
-	var freeSpacePointer uint16
-	err = binary.Read(t.pager.file_descriptor, binary.LittleEndian, &freeSpacePointer)
-	fmt.Println(freeSpacePointer)
-	_, _ = t.pager.file_descriptor.Write(row.Serialize())
+	t._WriteData(row)
 	return nil
 }
 func (t *Table) Select() error {

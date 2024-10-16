@@ -275,6 +275,5 @@ func table_open(filename string) (*Table, error) {
 }
 
 //TODO:
-//1. Finish allocating the initial leaf node with all of the meta data
-//2. Finish the logic of inserting data into the leaf nodes
-// 2a. This includes the keys, I forgot about that
+//1. The key is numerical value the user enters first and the values are the name/email.
+//Right now we are just inserting the key in unsorted order but we will change that
