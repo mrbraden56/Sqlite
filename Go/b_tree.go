@@ -125,10 +125,21 @@ func (t *Table) _insert(row Row) {
 
 	} else {
 		for minIndex <= uint32(maxIndex) {
-			middleIndex := minIndex + ((uint32(maxIndex)-uint32(minIndex))/(2*272))*272
+			middleIndex := minIndex + ((uint32(maxIndex)-uint32(minIndex))/(2*ROW_SIZE))*ROW_SIZE
 			fmt.Println("middleIndex:", middleIndex)
-			val := t.readValue(int64(middleIndex))
-			fmt.Println("middleIndex val:", val)
+			middleKey := t.readValue(int64(middleIndex))
+			fmt.Println("middleIndex val:", middleKey)
+			fmt.Println(row.id)
+			if row.id > uint32(middleKey) {
+				minIndex = uint32(middleIndex) + uint32(ROW_SIZE)
+				fmt.Println("Updated minIndex:", minIndex)
+				fmt.Println("Current maxIndex:", maxIndex)
+
+			} else {
+				maxIndex = uint16(middleIndex) - uint16(ROW_SIZE)
+				fmt.Println("Current minIndex:", minIndex)
+				fmt.Println("Updated maxIndex:", maxIndex)
+			}
 
 			break
 		}

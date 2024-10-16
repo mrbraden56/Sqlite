@@ -278,6 +278,9 @@ func table_open(filename string) (*Table, error) {
 //1. The key is numerical value the user enters first and the values are the name/email.
 //Right now we are just inserting the key in unsorted order but we will change that
 //What I did
-//Changed sizing of pages/username so now for leaf node, we have 12 bytes of metadata and
+//- Changed sizing of pages/username so now for leaf node, we have 12 bytes of metadata and
 //a cell size of 272 with a page size of 4092. This makes it so that we will have exactly
 //15 pages per leaf node
+//- Working on binary search when inserting into leaf node. I have the loop for binary serach and
+//the middle index calcualtion correct. Now I need to implement logic for when the key being inserted
+//is either bigger or smaller than the key in the node
